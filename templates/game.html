@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Tic-Tac-Toe Game - Room {{ room }}</h2>
+<div id="notification"></div>
+<div id="game-board">
+    <div class="row">
+        <div class="cell" onclick="makeMove(0)"></div>
+        <div class="cell" onclick="makeMove(1)"></div>
+        <div class="cell" onclick="makeMove(2)"></div>
+    </div>
+    <div class="row">
+        <div class="cell" onclick="makeMove(3)"></div>
+        <div class="cell" onclick="makeMove(4)"></div>
+        <div class="cell" onclick="makeMove(5)"></div>
+    </div>
+    <div class="row">
+        <div class="cell" onclick="makeMove(6)"></div>
+        <div class="cell" onclick="makeMove(7)"></div>
+        <div class="cell" onclick="makeMove(8)"></div>
+    </div>
+</div>
+<button onclick="resetGame()">Reset Game</button>
+
+<!-- Include the Socket.IO client library -->
+<script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+
+<!-- Your custom JavaScript -->
+<script src="{{ url_for('static', filename='game.js') }}"></script>
+
+<script>
+    var socket = io.connect('http://' + document.domain + ':' + location.port);
+    var room = "{{ room }}";
+    var player = "{{ player }}";  // Get the current player from the session
+    var currentPlayer = 'X';
+    var gameActive = true;  // To prevent moves after the game has ended
+
+    socket.on('connect', function() {
+        socket.emit('join', {'room': room});
+    });
+
+    socket.on('move', function(data) {
+        document.querySelectorAll('.cell')[data.index].innerHTML = data.player;
+        currentPlayer = data.player === 'X' ? 'O' : 'X';
+        checkGameStatus();
+    });
+
+    socket.on('message', function(data) {
+        console.log(data.msg);
+    });
+
+    socket.on('notification', function(data) {
+        document.getElementById('notification').innerHTML = data.msg;
+    });
+
+    function makeMove(index) {
+        if (!gameActive) {
+            alert("The game has ended. Please reset to start a new game.");
+            return;
+        }
+        
+        if (player !== currentPlayer) {
+            alert("It's not your turn!");
+            return;
+        }
+
+        var cells = document.querySelectorAll('.cell');
+        if (cells[index].innerHTML === '') {
+            socket.emit('move', {'index': index, 'player': player, 'room': room});
+        }
+    }
+
+    function checkGameStatus() {
+        var cells = document.querySelectorAll('.cell');
+        var winCombinations = [
+            [0, 1, 2],
+            [3, 4, 5],
+            [6, 7, 8],
+            [0, 3, 6],
+            [1, 4, 7],
+            [2, 5, 8],
+            [0, 4, 8],
+            [2, 4, 6]
+        ];
+
+        var winner = null;
+
+        winCombinations.forEach(function(combination) {
+            var [a, b, c] = combination;
+            if (cells[a].innerHTML && cells[a].innerHTML === cells[b].innerHTML && cells[a].innerHTML === cells[c].innerHTML) {
+                winner = cells[a].innerHTML;
+            }
+        });
+
+        if (winner) {
+            gameActive = false;
+            alert(winner + " wins!");
+        } else if (Array.from(cells).every(cell => cell.innerHTML !== '')) {
+            gameActive = false;
+            alert("It's a draw!");
+        }
+    }
+
+    function resetGame() {
+        var cells = document.querySelectorAll('.cell');
+        cells.forEach(cell => cell.innerHTML = '');
+        socket.emit('reset', {'room': room});
+        currentPlayer = 'X';
+        gameActive = true;  // Reactivate the game
+    }
+</script>
+{% endblock %}
