@@ -3,36 +3,37 @@
 {% block content %}
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
 <div class="container mt-4">
-    <h2 class="text-center mb-4">Tic-Tac-Toe Game - Room {{ room }}</h2>
-    <div class="row">
-        <div class="col-md-8">
-            <div class="alert alert-primary text-center">
-                You're: <strong>{{ player_marker }}</strong>
-            </div>
-            <div id="game-board" class="d-flex flex-wrap justify-content-center" style="max-width: 300px;">
-                {% for i in range(9) %}
-                <div class="cell border border-secondary text-center" style="width: 33.33%; height: 100px; line-height: 100px; cursor: pointer;" data-cell-index="{{ i }}"></div>
-                {% endfor %}
-            </div>
-            <button id="game-reset" class="btn btn-primary mt-3">Reset Game</button>
-            <button id="leave-game" class="btn btn-danger mt-3 ml-2">Leave Game</button>
-        </div>
-        <div class="col-md-4">
-            <h4 class="text-center">Game Log</h4>
-            <div id="game-log" class="border rounded p-2 bg-light" style="height: 400px; overflow-y: scroll;"></div>
-        </div>
+  <h2 class="text-center mb-4">Tic-Tac-Toe Game - Room {{ room }}</h2>
+  <div class="row">
+    <div class="col-md-8">
+      <div class="alert alert-primary text-center">
+        You're: <strong>{{ player_marker }}</strong>
+      </div>
+      <div id="game-board" class="d-flex flex-wrap justify-content-center" style="max-width: 300px;">
+        {% for i in range(9) %}
+        <div class="cell border border-secondary text-center" style="width: 33.33%; height: 100px; line-height: 100px; cursor: pointer;" data-cell-index="{{ i }}"></div>
+        {% endfor %}
+      </div>
+      <button id="game-reset" class="btn btn-primary mt-3">Reset Game</button>
+      <button id="leave-game" class="btn btn-danger mt-3 ml-2">Leave Game</button>
     </div>
+    <div class="col-md-4">
+      <h4 class="text-center">Game Log</h4>
+      <div id="game-log" class="border rounded p-2 bg-light" style="height: 400px; overflow-y: scroll;"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
 <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const socket = io.connect('http://' + document.domain + ':' + location.port);
+  document.addEventListener('DOMContentLoaded', function() {
+    const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
     const room = "{{ room }}";
     const player_marker = "{{ player_marker }}";
     let gameActive = true;
-    let currentPlayer = null;
+    let currentPlayer = 'X';
+    let players = []
 
     const cells = document.querySelectorAll('.cell');
     const logArea = document.getElementById('game-log');
@@ -40,106 +41,107 @@ document.addEventListener('DOMContentLoaded', function() {
     const leaveButton = document.getElementById('leave-game');
 
     socket.on('connect', () => {
-        socket.emit('join', { room });
+      socket.emit('join', { room });
     });
 
     socket.on('start_game', (data) => {
-        currentPlayer = data.currentPlayer;
-        gameActive = true; // Reactivate the game
+      currentPlayer = data.currentPlayer;
+      players.push(data)
+      console.log(players)
+      logEvent(`${data.username} has joined the game as ${data.currentPlayer}`);
+      gameActive = true;
     });
 
     socket.on('move', (data) => {
-        cells[data.index].textContent = data.player_marker;
-        currentPlayer = data.next_player; // Switch the turn to the next player
-        logEvent(`${data.player_marker} marked cell ${data.index}`);
-        checkGameStatus();
+      cells[data.index].textContent = data.player_marker;
+      currentPlayer = data.next_player;
+      logEvent(`${data.player_marker} marked cell ${data.index}`);
+      checkGameStatus();
     });
 
     socket.on('log', (data) => {
-        logEvent(data.msg);
+      logEvent(data.msg);
     });
 
     socket.on('reset', () => {
-        resetGameState();  // Call the reset game state function when reset is received
-        logEvent("Game has been reset.");
+      resetGameState();
+      logEvent("Game has been reset.");
     });
 
     socket.on('player_left', (data) => {
-        gameActive = false; // Stop the game since one player has left
+      logEvent(`${data.username} has left the game.`);
+      gameActive = false;
     });
 
     cells.forEach(cell => {
-        cell.addEventListener('click', () => {
-            if (!gameActive) {
-                logEvent("Game is not active. Please reset.");
-                return;
-            }
-            if (!cell.textContent.trim()) {
-                const index = cell.getAttribute('data-cell-index');
-                makeMove(index);
-            }
-        });
+      cell.addEventListener('click', () => {
+        if (gameActive && cell.textContent.trim() === '') {
+          const index = cell.getAttribute('data-cell-index');
+          makeMove(index);
+        }
+      });
     });
 
     resetButton.addEventListener('click', () => {
-        socket.emit('reset', { room });
+      socket.emit('reset', { room });
     });
 
     leaveButton.addEventListener('click', () => {
-        socket.emit('leave', { room });
-        window.location.href = "{{ url_for('home') }}"; // Redirect to home after leaving the game
+      socket.emit('leave', { room });
+      window.location.href = "{{ url_for('home') }}"; 
     });
 
     function makeMove(index) {
-        if (!gameActive) {
-            logEvent("Game is over. Reset to play again.");
-            return;
-        }
-        if (player_marker !== currentPlayer) {
-            logEvent("It's not your turn!");
-            return;
-        }
+      if (player_marker === currentPlayer) {
         socket.emit('move', { index, player_marker, room });
+      } else {
+        logEvent("It's not your turn!");
+      }
     }
 
-    function checkGameStatus() {
-        const winCombinations = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8],
-            [0, 3, 6], [1, 4, 7], [2, 5, 8],
-            [0, 4, 8], [2, 4, 6]
-        ];
-        
-        let winner = null;
-        winCombinations.forEach(combination => {
-            const [a, b, c] = combination;
-            if (cells[a].textContent && cells[a].textContent === cells[b].textContent && cells[a].textContent === cells[c].textContent) {
-                winner = cells[a].textContent;
-            }
-        });
+function checkGameStatus() {
+  if (gameActive === false) return
+  const winCombinations = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
 
-        if (winner) {
-            gameActive = false;
-            logEvent(`${winner} wins!`);
-        } else if (Array.from(cells).every(cell => cell.textContent.trim() !== '')) {
-            gameActive = false;
-            logEvent("It's a draw!");
-        }
+  let winner = null;
+  winCombinations.forEach(combination => {
+    const [a, b, c] = combination;
+    if (cells[a].textContent && cells[a].textContent === cells[b].textContent && cells[a].textContent === cells[c].textContent) {
+      winner = cells[a].textContent;
+      winnerUsername = players.find(player => player.currentPlayer === winner).username;
+      console.log(`Winner detected: ${winner}`); 
+      gameActive = false;
+      logEvent(`${winner} wins!`);
+      socket.emit('win', { winnerUsername, room });
     }
+  });
+
+  if (!winner && Array.from(cells).every(cell => cell.textContent.trim() !== '')) {
+    gameActive = false;
+    logEvent("It's a draw!");
+    socket.emit('draw', { room });
+  }
+}
 
     function resetGameState() {
-        cells.forEach(cell => {
-            cell.textContent = '';
-        });
-        currentPlayer = 'X'; // X starts after a reset
-        gameActive = true;  // Reactivate the game
+      cells.forEach(cell => {
+        cell.textContent = '';
+      });
+      currentPlayer = 'X'; 
+      gameActive = true;
     }
 
     function logEvent(message) {
-        const logEntry = document.createElement('div');
-        logEntry.textContent = message;
-        logArea.appendChild(logEntry);
-        logArea.scrollTop = logArea.scrollHeight; // Scroll to the bottom
+      const logEntry = document.createElement('div');
+      logEntry.textContent = message;
+      logArea.appendChild(logEntry);
+      logArea.scrollTop = logArea.scrollHeight;
     }
-});
+  });
 </script>
 {% endblock %}
+

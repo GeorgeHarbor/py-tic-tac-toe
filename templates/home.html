@@ -1,14 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <h1 class="text-center my-3">Welcome, {{ username }}!</h1>
-    <a href="{{ url_for('create_room') }}" class="btn btn-primary mb-3">Create a Room</a>
-    <form action="{{ url_for('join_room_view') }}" method="POST" class="mb-3">
-        <div class="input-group mb-3">
-            <input type="text" name="room_number" class="form-control" placeholder="Enter Room Number" aria-label="Room Number" required>
-            <button class="btn btn-secondary" type="submit">Join Room</button>
+<div class="d-flex justify-content-between" style="gap: 2rem;">
+        <div class="flex-grow-1 me-3">
+            <h1 class="text-center my-3">Welcome, {{ username }}!</h1>
+            <a href="{{ url_for('create_room') }}" class="btn btn-primary mb-3">Create a Room</a>
+            <form action="{{ url_for('player_join_room') }}" method="POST" class="mb-3">
+                <div class="input-group mb-3">
+                    <input type="text" name="room_number" class="form-control" placeholder="Enter Room Number" aria-label="Room Number" required>
+                    <button class="btn btn-secondary" type="submit">Join Room</button>
+                </div>
+            </form>
+            <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
         </div>
-    </form>
-    <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+        <div class="leaderboard border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+            <h2 class="text-center">Leaderboard</h2>
+            <ul class="list-group">
+                {% for user in users %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ user.username }}
+                    <span class="badge bg-primary rounded-pill">{{ user.wins }} Wins</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+    </div>
 {% endblock %}
 

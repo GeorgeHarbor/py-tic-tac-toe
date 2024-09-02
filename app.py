@@ -3,38 +3,39 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_socketio import SocketIO, join_room, leave_room, emit
 import sqlite3
 import random
-import os
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'your_secret_key')
+app.secret_key = 'mojkljuc'
 socketio = SocketIO(app)
 
-# Database connection
 def get_db_connection():
     conn = sqlite3.connect('users.db')
     conn.row_factory = sqlite3.Row
     return conn
 
-# Create user table if it doesn't exist
 def init_db():
     with get_db_connection() as conn:
         conn.execute(
             '''CREATE TABLE IF NOT EXISTS user (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
+                password TEXT NOT NULL,
+                wins INTEGER DEFAULT 0 
             )'''
         )
         conn.commit()
 
-# Initialize the database before the first request
-with app.app_context():
+@app.before_request
+def before_request():
     init_db()
 
 @app.route('/')
 def home():
     if 'username' in session:
-        return render_template('home.html', username=session['username'])
+        users = []
+        with get_db_connection() as conn:
+            users = conn.execute("SELECT * FROM user ORDER BY wins DESC").fetchall()
+        return render_template('home.html', username=session['username'], users=users)
     return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -74,9 +75,9 @@ def login():
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)  # Clear 'username' data from session
-    session.pop('room', None)  # Clear 'room' data from session
-    session.pop('player_marker', None)  # Clear 'player_marker' from session
+    session.pop('username', None)  
+    session.pop('room', None)  
+    session.pop('player_marker', None)  
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
@@ -93,7 +94,7 @@ def create_room():
     return redirect(url_for('game', room=room_number))
 
 @app.route('/join_room', methods=['POST'])
-def join_room_view():
+def player_join_room():
     if 'username' not in session:
         flash('You must be logged in to join a room.', 'danger')
         return redirect(url_for('login'))
@@ -116,12 +117,9 @@ def game():
 @socketio.on('join')
 def on_join(data):
     username = session.get('username')
-    room = session.get('room')
+    room = data['room']
     join_room(room)
-    
-    emit('log', {'msg': f"{username} has joined the room."}, to=room)
-    emit('update_player_marker', {'player_marker': session['player_marker']}, to=room)
-    emit('start_game', {'currentPlayer': 'X'}, to=room)  # X always starts
+    emit('start_game', {'currentPlayer': 'X', 'username': username}, to=room)  
 
 @socketio.on('move')
 def on_move(data):
@@ -130,17 +128,21 @@ def on_move(data):
     next_player = 'O' if current_player == 'X' else 'X'
     
     emit('move', {'index': data['index'], 'player_marker': current_player, 'next_player': next_player}, to=room)
+@socketio.on('win')
+def on_win(data):
+        with get_db_connection() as conn:
+            conn.execute("UPDATE user SET wins = wins + 1 WHERE username = ?", (data['winnerUsername'],))
+            conn.commit()
 
 @socketio.on('reset')
 def on_reset(data):
     room = data['room']
-    emit('reset', to=room)  # Broadcast the reset event to all players in the room
-    emit('start_game', {'currentPlayer': 'X'}, to=room)  # X always starts after a reset
+    emit('reset', to=room)  
 
 @socketio.on('leave')
 def on_leave(data):
     username = session.get('username')
-    room = session.get('room')
+    room = data['room']
     leave_room(room)
     emit('log', {'msg': f"{username} has left the room."}, to=room)
     emit('player_left', {'username': username}, to=room)
