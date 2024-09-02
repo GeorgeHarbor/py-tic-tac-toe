@@ -1,112 +1,124 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Tic-Tac-Toe Game - Room {{ room }}</h2>
-<div id="notification"></div>
-<div id="game-board">
-    <div class="row">
-        <div class="cell" onclick="makeMove(0)"></div>
-        <div class="cell" onclick="makeMove(1)"></div>
-        <div class="cell" onclick="makeMove(2)"></div>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+<div class="container mt-4">
+    <h2 class="text-center mb-4">Tic-Tac-Toe Game - Room {{ room }}</h2>
+    <div class="alert alert-primary text-center">
+        You're: <strong>{{ player_marker }}</strong>
     </div>
-    <div class="row">
-        <div class="cell" onclick="makeMove(3)"></div>
-        <div class="cell" onclick="makeMove(4)"></div>
-        <div class="cell" onclick="makeMove(5)"></div>
+    <div id="notification" class="alert alert-info" role="alert"></div>
+    <div id="game-board" class="d-flex flex-wrap justify-content-center" style="max-width: 300px;">
+        {% for i in range(9) %}
+        <div class="cell border border-secondary text-center" style="width: 33.33%; height: 100px; line-height: 100px; cursor: pointer;" data-cell-index="{{ i }}"></div>
+        {% endfor %}
     </div>
-    <div class="row">
-        <div class="cell" onclick="makeMove(6)"></div>
-        <div class="cell" onclick="makeMove(7)"></div>
-        <div class="cell" onclick="makeMove(8)"></div>
-    </div>
+    <button id="game-reset" class="btn btn-primary mt-3">Reset Game</button>
 </div>
-<button onclick="resetGame()">Reset Game</button>
 
-<!-- Include the Socket.IO client library -->
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
 <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-
-<!-- Your custom JavaScript -->
-<script src="{{ url_for('static', filename='game.js') }}"></script>
-
 <script>
-    var socket = io.connect('http://' + document.domain + ':' + location.port);
-    var room = "{{ room }}";
-    var player = "{{ player }}";  // Get the current player from the session
-    var currentPlayer = 'X';
-    var gameActive = true;  // To prevent moves after the game has ended
+document.addEventListener('DOMContentLoaded', function() {
+    const socket = io.connect('http://' + document.domain + ':' + location.port);
+    const room = "{{ room }}";
+    const player_marker = "{{ player_marker }}";
+    let gameActive = true;
+    let currentPlayer = null;
 
-    socket.on('connect', function() {
-        socket.emit('join', {'room': room});
+    const cells = document.querySelectorAll('.cell');
+    const notification = document.getElementById('notification');
+    const resetButton = document.getElementById('game-reset');
+
+    socket.on('connect', () => {
+        socket.emit('join', { room });
     });
 
-    socket.on('move', function(data) {
-        document.querySelectorAll('.cell')[data.index].innerHTML = data.player;
-        currentPlayer = data.player === 'X' ? 'O' : 'X';
+    socket.on('start_game', (data) => {
+        currentPlayer = data.currentPlayer;
+        gameActive = true; // Reactivate the game
+    });
+
+    socket.on('move', (data) => {
+        cells[data.index].textContent = data.player_marker;
+        currentPlayer = data.next_player; // Switch the turn to the next player
         checkGameStatus();
     });
 
-    socket.on('message', function(data) {
-        console.log(data.msg);
+    socket.on('notification', (data) => {
+        showNotification(data.msg, data.type === 'error' ? 'alert-danger' : 'alert-success');
     });
 
-    socket.on('notification', function(data) {
-        document.getElementById('notification').innerHTML = data.msg;
+    socket.on('reset', () => {
+        resetGameState();  // Call the reset game state function when reset is received
+    });
+
+    cells.forEach(cell => {
+        cell.addEventListener('click', () => {
+            if (!gameActive) {
+                showNotification("Game is not active. Please reset.", 'alert-warning');
+                return;
+            }
+            if (!cell.textContent.trim()) {
+                const index = cell.getAttribute('data-cell-index');
+                makeMove(index);
+            }
+        });
+    });
+
+    resetButton.addEventListener('click', () => {
+        socket.emit('reset', { room });
     });
 
     function makeMove(index) {
         if (!gameActive) {
-            alert("The game has ended. Please reset to start a new game.");
+            showNotification("Game is over. Reset to play again.", 'alert-warning');
             return;
         }
-        
-        if (player !== currentPlayer) {
-            alert("It's not your turn!");
+        if (player_marker !== currentPlayer) {
+            showNotification("It's not your turn!", 'alert-warning');
             return;
         }
-
-        var cells = document.querySelectorAll('.cell');
-        if (cells[index].innerHTML === '') {
-            socket.emit('move', {'index': index, 'player': player, 'room': room});
-        }
+        socket.emit('move', { index, player_marker, room });
     }
 
     function checkGameStatus() {
-        var cells = document.querySelectorAll('.cell');
-        var winCombinations = [
-            [0, 1, 2],
-            [3, 4, 5],
-            [6, 7, 8],
-            [0, 3, 6],
-            [1, 4, 7],
-            [2, 5, 8],
-            [0, 4, 8],
-            [2, 4, 6]
+        const winCombinations = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6]
         ];
-
-        var winner = null;
-
-        winCombinations.forEach(function(combination) {
-            var [a, b, c] = combination;
-            if (cells[a].innerHTML && cells[a].innerHTML === cells[b].innerHTML && cells[a].innerHTML === cells[c].innerHTML) {
-                winner = cells[a].innerHTML;
+        
+        let winner = null;
+        winCombinations.forEach(combination => {
+            const [a, b, c] = combination;
+            if (cells[a].textContent && cells[a].textContent === cells[b].textContent && cells[a].textContent === cells[c].textContent) {
+                winner = cells[a].textContent;
             }
         });
 
         if (winner) {
             gameActive = false;
-            alert(winner + " wins!");
-        } else if (Array.from(cells).every(cell => cell.innerHTML !== '')) {
+            showNotification(winner + " wins!", 'alert-success');
+        } else if (Array.from(cells).every(cell => cell.textContent.trim() !== '')) {
             gameActive = false;
-            alert("It's a draw!");
+            showNotification("It's a draw!", 'alert-success');
         }
     }
 
-    function resetGame() {
-        var cells = document.querySelectorAll('.cell');
-        cells.forEach(cell => cell.innerHTML = '');
-        socket.emit('reset', {'room': room});
-        currentPlayer = 'X';
+    function resetGameState() {
+        cells.forEach(cell => {
+            cell.textContent = '';
+        });
+        currentPlayer = 'X'; // X starts after a reset
         gameActive = true;  // Reactivate the game
+        showNotification("Game has been reset. Start playing!", 'alert-info');
     }
+
+    function showNotification(message, type = 'alert-info') {
+        notification.textContent = message;
+        notification.className = 'alert ' + type;
+    }
+});
 </script>
 {% endblock %}

@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <h1>Welcome, {{ username }}!</h1>
-    <a href="{{ url_for('create_room') }}">Create a Room</a><br><br>
-    <form action="{{ url_for('join_room_view') }}" method="POST">
-        <input type="text" name="room_number" placeholder="Enter Room Number" required>
-        <button type="submit">Join Room</button>
-    </form><br>
-    <a href="{{ url_for('logout') }}">Logout</a>
+    <h1 class="text-center my-3">Welcome, {{ username }}!</h1>
+    <a href="{{ url_for('create_room') }}" class="btn btn-primary mb-3">Create a Room</a>
+    <form action="{{ url_for('join_room_view') }}" method="POST" class="mb-3">
+        <div class="input-group mb-3">
+            <input type="text" name="room_number" class="form-control" placeholder="Enter Room Number" aria-label="Room Number" required>
+            <button class="btn btn-secondary" type="submit">Join Room</button>
+        </div>
+    </form>
+    <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
 {% endblock %}
+

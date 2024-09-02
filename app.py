@@ -3,31 +3,32 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_socketio import SocketIO, join_room, leave_room, emit
 import sqlite3
 import random
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = os.environ.get('SECRET_KEY', 'your_secret_key')
 socketio = SocketIO(app)
 
 # Database connection
-def get_db():
+def get_db_connection():
     conn = sqlite3.connect('users.db')
     conn.row_factory = sqlite3.Row
     return conn
 
 # Create user table if it doesn't exist
 def init_db():
-    with get_db() as db:
-        db.execute(
+    with get_db_connection() as conn:
+        conn.execute(
             '''CREATE TABLE IF NOT EXISTS user (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
+                username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL
             )'''
         )
+        conn.commit()
 
 # Initialize the database before the first request
-@app.before_request
-def before_request():
+with app.app_context():
     init_db()
 
 @app.route('/')
@@ -43,10 +44,10 @@ def register():
         password = request.form['password']
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
 
-        with get_db() as db:
+        with get_db_connection() as conn:
             try:
-                db.execute("INSERT INTO user (username, password) VALUES (?, ?)", (username, hashed_password))
-                db.commit()
+                conn.execute("INSERT INTO user (username, password) VALUES (?, ?)", (username, hashed_password))
+                conn.commit()
                 flash('Registration successful! Please log in.', 'success')
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError:
@@ -60,8 +61,8 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        with get_db() as db:
-            user = db.execute("SELECT * FROM user WHERE username = ?", (username,)).fetchone()
+        with get_db_connection() as conn:
+            user = conn.execute("SELECT * FROM user WHERE username = ?", (username,)).fetchone()
             if user and check_password_hash(user['password'], password):
                 session['username'] = user['username']
                 return redirect(url_for('home'))
@@ -73,7 +74,9 @@ def login():
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
+    session.pop('username', None)  # Clear 'username' data from session
+    session.pop('room', None)  # Clear 'room' data from session
+    session.pop('player_marker', None)  # Clear 'player_marker' from session
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
@@ -85,7 +88,8 @@ def create_room():
     
     room_number = str(random.randint(1000, 9999))
     session['room'] = room_number
-    session['player'] = 'X'  # Player who creates the room is 'X'
+    session['player_marker'] = 'X'
+    
     return redirect(url_for('game', room=room_number))
 
 @app.route('/join_room', methods=['POST'])
@@ -96,37 +100,50 @@ def join_room_view():
     
     room_number = request.form.get('room_number')
     session['room'] = room_number
-    session['player'] = 'O'  # Player who joins the room is 'O'
+    session['player_marker'] = 'O'
+    
     return redirect(url_for('game', room=room_number))
 
 @app.route('/game')
 def game():
-    if 'username' not in session:
-        flash('You must be logged in to play the game.', 'danger')
+    if 'username' not in session or 'room' not in session or 'player_marker' not in session:
+        flash('You must be logged in and in a room to play the game.', 'danger')
         return redirect(url_for('login'))
     
-    room = request.args.get('room')
-    return render_template('game.html', room=room, player=session['player'])
+    room = session['room']
+    return render_template('game.html', room=room, player=session['username'], player_marker=session['player_marker'])
 
 @socketio.on('join')
 def on_join(data):
     username = session.get('username')
-    room = data['room']
+    room = session.get('room')
     join_room(room)
-    emit('message', {'msg': f"{username} has entered the room."}, room=room)
-    emit('notification', {'msg': f"{username} has joined the room."}, room=room)
+    
+    emit('message', {'msg': f"{username} has entered the room."}, to=room)
+    emit('notification', {'msg': f"{username} has joined the room."}, to=room)
+    emit('update_player_marker', {'player_marker': session['player_marker']}, to=room)
+    emit('start_game', {'currentPlayer': 'X'}, to=room)  # X always starts
 
 @socketio.on('move')
 def on_move(data):
+    room = session.get('room')
+    current_player = session.get('player_marker')
+    next_player = 'O' if current_player == 'X' else 'X'
+    
+    emit('move', {'index': data['index'], 'player_marker': current_player, 'next_player': next_player}, to=room)
+
+@socketio.on('reset')
+def on_reset(data):
     room = data['room']
-    emit('move', data, room=room)
+    emit('reset', to=room)  # Broadcast the reset event to all players in the room
+    emit('start_game', {'currentPlayer': 'X'}, to=room)  # X always starts after a reset
 
 @socketio.on('leave')
 def on_leave(data):
     username = session.get('username')
-    room = data['room']
+    room = session.get('room')
     leave_room(room)
-    emit('message', {'msg': f"{username} has left the room."}, room=room)
+    emit('message', {'msg': f"{username} has left the room."}, to=room)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
