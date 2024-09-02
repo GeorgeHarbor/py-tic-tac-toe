@@ -143,6 +143,7 @@ def on_leave(data):
     room = session.get('room')
     leave_room(room)
     emit('log', {'msg': f"{username} has left the room."}, to=room)
+    emit('player_left', {'username': username}, to=room)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

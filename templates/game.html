@@ -15,9 +15,10 @@
                 {% endfor %}
             </div>
             <button id="game-reset" class="btn btn-primary mt-3">Reset Game</button>
+            <button id="leave-game" class="btn btn-danger mt-3 ml-2">Leave Game</button>
         </div>
         <div class="col-md-4">
-            <h4>Game Log</h4>
+            <h4 class="text-center">Game Log</h4>
             <div id="game-log" class="border rounded p-2 bg-light" style="height: 400px; overflow-y: scroll;"></div>
         </div>
     </div>
@@ -36,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const cells = document.querySelectorAll('.cell');
     const logArea = document.getElementById('game-log');
     const resetButton = document.getElementById('game-reset');
+    const leaveButton = document.getElementById('leave-game');
 
     socket.on('connect', () => {
         socket.emit('join', { room });
@@ -62,6 +64,10 @@ document.addEventListener('DOMContentLoaded', function() {
         logEvent("Game has been reset.");
     });
 
+    socket.on('player_left', (data) => {
+        gameActive = false; // Stop the game since one player has left
+    });
+
     cells.forEach(cell => {
         cell.addEventListener('click', () => {
             if (!gameActive) {
@@ -77,6 +83,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     resetButton.addEventListener('click', () => {
         socket.emit('reset', { room });
+    });
+
+    leaveButton.addEventListener('click', () => {
+        socket.emit('leave', { room });
+        window.location.href = "{{ url_for('home') }}"; // Redirect to home after leaving the game
     });
 
     function makeMove(index) {
