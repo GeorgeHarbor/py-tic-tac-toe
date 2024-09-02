@@ -119,8 +119,7 @@ def on_join(data):
     room = session.get('room')
     join_room(room)
     
-    emit('message', {'msg': f"{username} has entered the room."}, to=room)
-    emit('notification', {'msg': f"{username} has joined the room."}, to=room)
+    emit('log', {'msg': f"{username} has joined the room."}, to=room)
     emit('update_player_marker', {'player_marker': session['player_marker']}, to=room)
     emit('start_game', {'currentPlayer': 'X'}, to=room)  # X always starts
 
@@ -143,7 +142,7 @@ def on_leave(data):
     username = session.get('username')
     room = session.get('room')
     leave_room(room)
-    emit('message', {'msg': f"{username} has left the room."}, to=room)
+    emit('log', {'msg': f"{username} has left the room."}, to=room)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

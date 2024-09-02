@@ -4,16 +4,23 @@
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
 <div class="container mt-4">
     <h2 class="text-center mb-4">Tic-Tac-Toe Game - Room {{ room }}</h2>
-    <div class="alert alert-primary text-center">
-        You're: <strong>{{ player_marker }}</strong>
+    <div class="row">
+        <div class="col-md-8">
+            <div class="alert alert-primary text-center">
+                You're: <strong>{{ player_marker }}</strong>
+            </div>
+            <div id="game-board" class="d-flex flex-wrap justify-content-center" style="max-width: 300px;">
+                {% for i in range(9) %}
+                <div class="cell border border-secondary text-center" style="width: 33.33%; height: 100px; line-height: 100px; cursor: pointer;" data-cell-index="{{ i }}"></div>
+                {% endfor %}
+            </div>
+            <button id="game-reset" class="btn btn-primary mt-3">Reset Game</button>
+        </div>
+        <div class="col-md-4">
+            <h4>Game Log</h4>
+            <div id="game-log" class="border rounded p-2 bg-light" style="height: 400px; overflow-y: scroll;"></div>
+        </div>
     </div>
-    <div id="notification" class="alert alert-info" role="alert"></div>
-    <div id="game-board" class="d-flex flex-wrap justify-content-center" style="max-width: 300px;">
-        {% for i in range(9) %}
-        <div class="cell border border-secondary text-center" style="width: 33.33%; height: 100px; line-height: 100px; cursor: pointer;" data-cell-index="{{ i }}"></div>
-        {% endfor %}
-    </div>
-    <button id="game-reset" class="btn btn-primary mt-3">Reset Game</button>
 </div>
 
 <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
@@ -27,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentPlayer = null;
 
     const cells = document.querySelectorAll('.cell');
-    const notification = document.getElementById('notification');
+    const logArea = document.getElementById('game-log');
     const resetButton = document.getElementById('game-reset');
 
     socket.on('connect', () => {
@@ -42,21 +49,23 @@ document.addEventListener('DOMContentLoaded', function() {
     socket.on('move', (data) => {
         cells[data.index].textContent = data.player_marker;
         currentPlayer = data.next_player; // Switch the turn to the next player
+        logEvent(`${data.player_marker} marked cell ${data.index}`);
         checkGameStatus();
     });
 
-    socket.on('notification', (data) => {
-        showNotification(data.msg, data.type === 'error' ? 'alert-danger' : 'alert-success');
+    socket.on('log', (data) => {
+        logEvent(data.msg);
     });
 
     socket.on('reset', () => {
         resetGameState();  // Call the reset game state function when reset is received
+        logEvent("Game has been reset.");
     });
 
     cells.forEach(cell => {
         cell.addEventListener('click', () => {
             if (!gameActive) {
-                showNotification("Game is not active. Please reset.", 'alert-warning');
+                logEvent("Game is not active. Please reset.");
                 return;
             }
             if (!cell.textContent.trim()) {
@@ -72,11 +81,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function makeMove(index) {
         if (!gameActive) {
-            showNotification("Game is over. Reset to play again.", 'alert-warning');
+            logEvent("Game is over. Reset to play again.");
             return;
         }
         if (player_marker !== currentPlayer) {
-            showNotification("It's not your turn!", 'alert-warning');
+            logEvent("It's not your turn!");
             return;
         }
         socket.emit('move', { index, player_marker, room });
@@ -99,10 +108,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (winner) {
             gameActive = false;
-            showNotification(winner + " wins!", 'alert-success');
+            logEvent(`${winner} wins!`);
         } else if (Array.from(cells).every(cell => cell.textContent.trim() !== '')) {
             gameActive = false;
-            showNotification("It's a draw!", 'alert-success');
+            logEvent("It's a draw!");
         }
     }
 
@@ -112,12 +121,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         currentPlayer = 'X'; // X starts after a reset
         gameActive = true;  // Reactivate the game
-        showNotification("Game has been reset. Start playing!", 'alert-info');
     }
 
-    function showNotification(message, type = 'alert-info') {
-        notification.textContent = message;
-        notification.className = 'alert ' + type;
+    function logEvent(message) {
+        const logEntry = document.createElement('div');
+        logEntry.textContent = message;
+        logArea.appendChild(logEntry);
+        logArea.scrollTop = logArea.scrollHeight; // Scroll to the bottom
     }
 });
 </script>
